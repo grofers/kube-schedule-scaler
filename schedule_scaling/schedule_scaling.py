@@ -57,7 +57,7 @@ def deployments_to_scale():
             annotations = deployment.metadata.get('annotations', {})
             f_deployment = str(namespace + '/' + str(deployment))
 
-            schedule_actions = parse_content(annotations.get('zalando.org/schedule-actions', None), f_deployment)
+            schedule_actions = parse_content(annotations.get('kube-schedule-scaler/schedule-actions', None), f_deployment)
 
             if schedule_actions is None or len(schedule_actions) == 0:
                 continue
