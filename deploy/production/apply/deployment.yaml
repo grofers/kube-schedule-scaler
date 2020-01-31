@@ -59,7 +59,7 @@ spec:
       serviceAccountName: kube-schedule-scaler
       containers:
       - name: kube-schedule-scaler
-        image: "citizensadvice/kube-schedule-scaler:latest"
+        image: "{{IMAGE}}"
         imagePullPolicy: Always
         resources:
           limits:

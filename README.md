@@ -16,7 +16,7 @@ Just add the annotation to either your `Deployment` or `Stackset`.
 
 ```
   annotations:
-    zalando.org/schedule-actions: '[{"schedule": "10 18 * * *", "replicas": "3"}]'
+    kube-schedule-scaler/schedule-actions: '[{"schedule": "10 18 * * *", "replicas": "3"}]'
 ```
 
 or
@@ -25,7 +25,7 @@ you can add your scaling definitions in json file and upload the file to S3 buck
 
 ```
   annotations:
-    zalando.org/schedule-actions: s3://schedule-scaling/catalog.json
+    kube-schedule-scaler/schedule-actions: s3://schedule-scaling/catalog.json
 ```
 Note:
   - The controller should have access to the bucket s3://schedule-scaling/
@@ -47,7 +47,7 @@ metadata:
   labels:
     application: nginx-deployment
   annotations:
-    zalando.org/schedule-actions: |
+    kube-schedule-scaler/schedule-actions: |
       [
         {"schedule": "30 4 * * 1,2,3,4,5", "minReplicas": "{{{HIGH_LOAD_REPLICAS}}}"},
         {"schedule": "00 8 * * 1,2,3,4,5", "minReplicas": "{{{REPLICAS}}}"},
@@ -60,19 +60,6 @@ metadata:
 
 
 
-### StackSet Example
-
-```bash
-apiVersion: zalando.org/v1
-kind: StackSet
-metadata:
-  name: {{{APPLICATION_NAME}}}
-  labels:
-    application: "{{{APPLICATION}}}"
-    stage: "{{{STAGE}}}"
-  annotations:
-    zalando.org/schedule-actions: '[{"schedule": "00 06 * * *", "replicas": "20"}, {"schedule": "30 14 * * *", "replicas": "{{{REPLICAS}}}", "minReplicas": "{{{REPLICAS}}}"}]'
-```
 
 ## Debugging
 
