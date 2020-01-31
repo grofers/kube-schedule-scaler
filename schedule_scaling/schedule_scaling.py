@@ -44,64 +44,80 @@ def get_kube_api():
     return api
 
 
-def deployments_to_scale():
+def get_resource_to_scale(resource_type="deployment"):
     '''
-    Getting the deployments configured for schedule scaling...
+    Getting the resource configured for schedule scaling...
     '''
+    if resource_type not in ['deployment', 'hpa']:
+        logging.error('Invalid resource_type')
+        return
+
     api = get_kube_api()
-    deployments = []
+    resources = []
     scaling_dict = {}
     for namespace in list(pykube.Namespace.objects(api)):
         namespace = str(namespace)
-        for deployment in pykube.Deployment.objects(api).filter(namespace=namespace):
-            annotations = deployment.metadata.get('annotations', {})
-            f_deployment = str(namespace + '/' + str(deployment))
 
-            schedule_actions = parse_content(annotations.get('kube-schedule-scaler/schedule-actions', None), f_deployment)
+        if resource_type == 'deployment':
+            resource_list = pykube.Deployment.objects(api).filter(namespace=namespace)
+        else:
+            resource_list = pykube.HorizontalPodAutoscaler.objects(api).filter(namespace=namespace)
+
+        for resource in resource_list:
+            annotations = resource.metadata.get('annotations', {})
+            f_resource = str(namespace + '/' + str(resource))
+
+            schedule_actions = parse_content(annotations.get('kube-schedule-scaler/schedule-actions', None), f_resource)
 
             if schedule_actions is None or len(schedule_actions) == 0:
                 continue
 
-            deployments.append([deployment.metadata['name']])
-            scaling_dict[f_deployment] = schedule_actions
-    if not deployments:
-        logging.info('No deployment is configured for schedule scaling')
+            resources.append([resource.metadata['name']])
+            scaling_dict[f_resource] = schedule_actions
+    if not resources:
+        logging.info('No {} is configured for scheduled scaling'.format(resource_type))
 
     return scaling_dict
 
 
-def deploy_job_creator():
-    """ Create CronJobs for configured Deployments """
+def resource_job_creator(resource_type='deployment'):
+    """ Create CronJobs for configured resources """
 
-    deployments__to_scale = deployments_to_scale()
-    print("Deployments collected for scaling: ")
-    for deploy, schedules in deployments__to_scale.items():
-        deployment = deploy.split("/")[1]
-        namespace = deploy.split("/")[0]
+    if resource_type not in ['deployment', 'hpa']:
+        logging.error('Invalid resource_type')
+        return
+
+    resources__to_scale = get_resource_to_scale(resource_type)
+    print("{} collected for scaling: ".format(resource_type))
+    for resource_name, schedules in resources__to_scale.items():
+        resource = resource_name.split("/")[1]
+        namespace = resource_name.split("/")[0]
         for n in range(len(schedules)):
             schedules_n = schedules[n]
             replicas = schedules_n.get('replicas', None)
             minReplicas = schedules_n.get('minReplicas', None)
             maxReplicas = schedules_n.get('maxReplicas', None)
             schedule = schedules_n.get('schedule', None)
-            print("Deployment: %s, Namespace: %s, Replicas: %s, MinReplicas: %s, MaxReplicas: %s, Schedule: %s"
-                  % (deployment, namespace, replicas, minReplicas, maxReplicas, schedule))
+            print("%s: %s, Namespace: %s, Replicas: %s, MinReplicas: %s, MaxReplicas: %s, Schedule: %s"
+                  % (resource_type, resource, namespace, replicas, minReplicas, maxReplicas, schedule))
 
-            with open("/root/schedule_scaling/templates/deployment-script.py", 'r') as script:
+            template_file = '/root/schedule_scaling/templates/{}-script.py'.format(resource_type)
+
+            with open(template_file, 'r') as script:
                 script = script.read()
-            deployment_script = script % {
+            resource_script = script % {
                 'namespace': namespace,
-                'name': deployment,
+                'name': resource,
                 'replicas': replicas,
                 'minReplicas': minReplicas,
                 'maxReplicas': maxReplicas,
                 'time': EXECUTION_TIME,
             }
             i = 0
-            while os.path.exists("/tmp/scaling_jobs/%s-%s.py" % (deployment, i)):
+            while os.path.exists("/tmp/scaling_jobs/%s-%s-%s.py" % (resource_type, resource, i)):
                 i += 1
-            script_creator = open("/tmp/scaling_jobs/%s-%s.py" % (deployment, i), "w")
-            script_creator.write(deployment_script)
+            script_creator = open("/tmp/scaling_jobs/%s-%s-%s.py" % (resource_type, resource, i), "w")
+            script_creator.write(resource_script)
             script_creator.close()
             cmd = ['. /root/.profile ; /usr/bin/python', script_creator.name,
                    '2>&1 | tee -a /tmp/scale_activities.log']
@@ -111,8 +127,9 @@ def deploy_job_creator():
                 job.setall(schedule)
                 job.set_comment("Scheduling_Jobs")
             except Exception:
-                print('Deployment: %s has syntax error in the schedule' % (deployment))
+                print('%s: %s has syntax error in the schedule' % (resource_type, resource))
                 job.delete()
+
 
 def parse_content(content, identifier):
     if content == None:
@@ -188,5 +205,6 @@ def parse_schedules(schedules, identifier):
 if __name__ == '__main__':
     create_job_directory()
     clear_cron()
-    deploy_job_creator()
+    resource_job_creator('deployment')
+    resource_job_creator('hpa')
     commit()
