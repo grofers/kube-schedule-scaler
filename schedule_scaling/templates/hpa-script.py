@@ -14,7 +14,7 @@ def get_kube_api():
 
 
 api = get_kube_api()
-deployment = pykube.Deployment.objects(api).filter(namespace="%(namespace)s").get(name="%(name)s")
+deployment = pykube.Deployment.objects(api).filter(namespace="%(namespace)s").get(name="%(deployment_name)s")
 
 replicas = %(replicas)s
 minReplicas = %(minReplicas)s
@@ -25,9 +25,9 @@ if replicas != None:
     deployment.update()
 
     if deployment.replicas == replicas:
-        print('Deployment %(name)s has been scaled successfully to %(replicas)s replica at', %(time)s)
+        print('Deployment %(deployment_name)s has been scaled successfully to %(replicas)s replica at', %(time)s)
     else:
-        print('Something went wrong... deployment %(name)s has not been scaled')
+        print('Something went wrong... deployment %(deployment_name)s has not been scaled')
 
 
 try:
