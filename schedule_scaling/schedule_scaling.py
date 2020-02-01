@@ -1,4 +1,4 @@
-""" Collecting Deployments configured for Scaling """
+""" Collecting HPAs configured for Scaling """
 import os
 import pathlib
 import json
@@ -44,64 +44,72 @@ def get_kube_api():
     return api
 
 
-def deployments_to_scale():
+def hpas_to_scale():
     '''
-    Getting the deployments configured for schedule scaling...
+    Getting the HPAs configured for schedule scaling...
     '''
     api = get_kube_api()
-    deployments = []
+    hpa_list = []
     scaling_dict = {}
     for namespace in list(pykube.Namespace.objects(api)):
         namespace = str(namespace)
-        for deployment in pykube.Deployment.objects(api).filter(namespace=namespace):
-            annotations = deployment.metadata.get('annotations', {})
-            f_deployment = str(namespace + '/' + str(deployment))
+        for hpa in pykube.HorizontalPodAutoscaler.objects(api).filter(namespace=namespace):
+            annotations = hpa.metadata.get('annotations', {})
+            f_hpa = str(namespace + '/' + str(hpa))
 
-            schedule_actions = parse_content(annotations.get('kube-schedule-scaler/schedule-actions', None), f_deployment)
+            schedule_actions = parse_content(annotations.get('kube-schedule-scaler/schedule-actions', None), f_hpa)
 
             if schedule_actions is None or len(schedule_actions) == 0:
                 continue
 
-            deployments.append([deployment.metadata['name']])
-            scaling_dict[f_deployment] = schedule_actions
-    if not deployments:
-        logging.info('No deployment is configured for schedule scaling')
+            hpa_list.append([hpa.metadata['name']])
+            scaling_dict[f_hpa] = {
+                'hpa': str(hpa),
+                'schedule_actions': schedule_actions,
+                'deployment': hpa.obj['spec']['scaleTargetRef']['name'],
+                'namespace': namespace,
+            }
+    if not hpa_list:
+        logging.info('No hpa is configured for schedule scaling')
 
     return scaling_dict
 
 
-def deploy_job_creator():
-    """ Create CronJobs for configured Deployments """
+def hpa_job_creator():
+    """ Create CronJobs for configured HPAs """
 
-    deployments__to_scale = deployments_to_scale()
-    print("Deployments collected for scaling: ")
-    for deploy, schedules in deployments__to_scale.items():
-        deployment = deploy.split("/")[1]
-        namespace = deploy.split("/")[0]
+    hpas__to_scale = hpas_to_scale()
+    print("HPAs collected for scaling: ")
+    for namespace_hpa, hpa_config in hpas__to_scale.items():
+        hpa = hpa_config['hpa']
+        namespace = hpa_config['namespace']
+        deployment = hpa_config['deployment']
+        schedules = hpa_config['schedule_actions']
         for n in range(len(schedules)):
             schedules_n = schedules[n]
             replicas = schedules_n.get('replicas', None)
             minReplicas = schedules_n.get('minReplicas', None)
             maxReplicas = schedules_n.get('maxReplicas', None)
             schedule = schedules_n.get('schedule', None)
-            print("Deployment: %s, Namespace: %s, Replicas: %s, MinReplicas: %s, MaxReplicas: %s, Schedule: %s"
-                  % (deployment, namespace, replicas, minReplicas, maxReplicas, schedule))
+            print("HPA: %s, Namespace: %s, Replicas: %s, MinReplicas: %s, MaxReplicas: %s, Schedule: %s"
+                  % (hpa, namespace, replicas, minReplicas, maxReplicas, schedule))
 
-            with open("/root/schedule_scaling/templates/deployment-script.py", 'r') as script:
+            with open("/root/schedule_scaling/templates/hpa-script.py", 'r') as script:
                 script = script.read()
-            deployment_script = script % {
+            hpa_script = script % {
                 'namespace': namespace,
-                'name': deployment,
+                'name': hpa,
+                'deployment_name': deployment,
                 'replicas': replicas,
                 'minReplicas': minReplicas,
                 'maxReplicas': maxReplicas,
                 'time': EXECUTION_TIME,
             }
             i = 0
-            while os.path.exists("/tmp/scaling_jobs/%s-%s.py" % (deployment, i)):
+            while os.path.exists("/tmp/scaling_jobs/%s-%s.py" % (hpa, i)):
                 i += 1
-            script_creator = open("/tmp/scaling_jobs/%s-%s.py" % (deployment, i), "w")
-            script_creator.write(deployment_script)
+            script_creator = open("/tmp/scaling_jobs/%s-%s.py" % (hpa, i), "w")
+            script_creator.write(hpa_script)
             script_creator.close()
             cmd = ['. /root/.profile ; /usr/bin/python', script_creator.name,
                    '2>&1 | tee -a /tmp/scale_activities.log']
@@ -111,7 +119,7 @@ def deploy_job_creator():
                 job.setall(schedule)
                 job.set_comment("Scheduling_Jobs")
             except Exception:
-                print('Deployment: %s has syntax error in the schedule' % (deployment))
+                print('HPA: %s has syntax error in the schedule' % (hpa))
                 job.delete()
 
 def parse_content(content, identifier):
@@ -188,5 +196,5 @@ def parse_schedules(schedules, identifier):
 if __name__ == '__main__':
     create_job_directory()
     clear_cron()
-    deploy_job_creator()
+    hpa_job_creator()
     commit()
