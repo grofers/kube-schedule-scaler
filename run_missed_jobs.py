@@ -20,5 +20,5 @@ for job in scale_jobs:
     retry_execution_threshold = time.strptime(retry_execution_threshold, "%Y-%m-%d %H:%M:%S.%f")
 
     if schedule > retry_execution_threshold:
-        schedule_to_execute = str(job).split(";")[2]
+        schedule_to_execute = str(job).split(";")[1]
         os.system(schedule_to_execute)
