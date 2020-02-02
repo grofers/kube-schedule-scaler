@@ -24,6 +24,7 @@ fi
 echo "
 ## The main script to collect the deployments & stacksets to be scaled##
 */3 * * * * . /root/.profile; /usr/bin/python /root/schedule_scaling/schedule_scaling.py 2>&1 | tee -a /tmp/scalingjob.log
+*/4 * * * * . /root/.profile; /usr/bin/python /root/run_missed_jobs.py 2>&1 | tee -a /tmp/scale_activities.log
 " | /usr/bin/crontab -
 
 # Run once at the startup of container
