@@ -60,6 +60,9 @@ spec:
       containers:
       - name: kube-schedule-scaler
         image: "{{IMAGE}}"
+        #env:
+        #- name: PUSH_GATEWAY_URL
+        #  value: "http://push_gateway_url"
         imagePullPolicy: Always
         resources:
           limits:
